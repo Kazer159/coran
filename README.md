@@ -1,6 +1,9 @@
 # Quran Explorer
 
-Application web d'exploration et d'analyse des données coraniques basée sur le stack MERN (MongoDB, Express, React, Node.js).
+![GitHub repo size](https://img.shields.io/github/repo-size/Kazer159/coran)
+![GitHub last commit](https://img.shields.io/github/last-commit/Kazer159/coran)
+
+Application web d'exploration et d'analyse des données coraniques basée sur le stack MERN (MongoDB, Express, React, Node.js). Ce projet fournit une interface moderne pour explorer le texte coranique, ses traductions et effectuer des analyses linguistiques.
 
 ## Fonctionnalités
 
@@ -22,7 +25,7 @@ Application web d'exploration et d'analyse des données coraniques basée sur le
 
 1. Cloner le dépôt
 ```bash
-git clone <repository-url> quran-explorer
+git clone https://github.com/Kazer159/coran.git quran-explorer
 cd quran-explorer
 ```
 
@@ -128,3 +131,21 @@ quran-explorer/
 ## Licence
 
 Ce projet est sous licence MIT.
+
+## Dépôt GitHub
+
+Ce projet est hébergé sur GitHub à l'adresse suivante: [https://github.com/Kazer159/coran](https://github.com/Kazer159/coran)
+
+## Déploiement
+
+Pour déployer votre propre version de ce projet sur GitHub:
+
+1. Créez un fork du dépôt
+2. Clonez-le sur votre machine locale
+3. Faites vos modifications
+4. Poussez vos changements:
+   ```bash
+   git add .
+   git commit -m "Description des changements"
+   git push origin master
+   ```
