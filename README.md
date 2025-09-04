@@ -138,7 +138,7 @@ Ce projet est hébergé sur GitHub à l'adresse suivante: [https://github.com/Ka
 
 ## Déploiement
 
-Pour déployer votre propre version de ce projet sur GitHub:
+Pour déployer votre propre version de ce projet sur GitHub merci de suivre les instructions suivantes:
 
 1. Créez un fork du dépôt
 2. Clonez-le sur votre machine locale
