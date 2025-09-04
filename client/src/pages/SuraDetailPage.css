@@ -1,0 +1,21 @@
+/* Animation de surbrillance pour les versets ciblés par un lien */
+@keyframes highlight {
+  0% {
+    background-color: rgba(144, 202, 249, 0.8); /* Bleu clair plus visible */
+  }
+  50% {
+    background-color: rgba(144, 202, 249, 0.5);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.highlight-verse {
+  animation: highlight 3s ease-out;
+  border-left: 5px solid #3f51b5; /* Couleur primaire, un peu plus épaisse */
+  padding-left: 16px;
+  transition: border-left 0.3s ease;
+  scroll-margin-top: 100px; /* Ajoute une marge pour que le verset ne soit pas collé en haut de l'écran */
+  box-shadow: 0 0 10px rgba(63, 81, 181, 0.3); /* Légère ombre pour mieux distinguer */
+}

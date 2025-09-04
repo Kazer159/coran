@@ -1,0 +1,88 @@
+/* Import des polices Google */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/earlyaccess/scheherazadenew.css');
+
+/* Classes pour les textes arabes */
+.arabic-text {
+  font-family: 'Amiri', 'Scheherazade New', serif;
+  font-size: 1.5rem;
+  line-height: 2.2;
+  direction: rtl;
+  text-align: right;
+  margin: 1.5rem 0;
+}
+
+.arabic-large {
+  font-size: 2rem;
+  line-height: 2.5;
+}
+
+.arabic-medium {
+  font-size: 1.5rem;
+  line-height: 2.2;
+}
+
+.arabic-small {
+  font-size: 1.2rem;
+  line-height: 2;
+}
+
+/* Classes pour les traductions */
+.translation-text {
+  font-family: 'Roboto', sans-serif;
+  font-size: 1rem;
+  line-height: 1.6;
+  font-style: italic;
+  color: var(--text-secondary);
+  margin: 1rem 0;
+}
+
+/* Classes pour les références */
+.reference-text {
+  font-family: 'Roboto', sans-serif;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* Variables CSS pour usage facile dans l'application */
+:root {
+  --arabic-font: 'Amiri', 'Scheherazade New', serif;
+  --latin-font: 'Roboto', sans-serif;
+  
+  --text-primary: #212121;
+  --text-secondary: #757575;
+  
+  /* En mode sombre, ces variables seront écrasées par le thème */
+}
+
+/* Améliorations de contraste pour l'accessibilité */
+[data-theme='dark'] {
+  --text-primary: #e0e0e0;
+  --text-secondary: #a0a0a0;
+}
+
+/* Optimisations pour les titres */
+h1, h2, h3, h4, h5, h6 {
+  margin-bottom: 1.5rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+h1 {
+  font-size: 2.5rem;
+}
+
+h2 {
+  font-size: 2rem;
+}
+
+h3 {
+  font-size: 1.75rem;
+}
+
+/* Optimisation des espacements pour la lecture */
+p {
+  margin-bottom: 1rem;
+}
