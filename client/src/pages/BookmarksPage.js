@@ -1,23 +1,19 @@
 import React, { useState, useEffect } from 'react';
+import useVerseDetails from '../hooks/useVerseDetails';
 import { 
   Container, 
   Typography, 
   Box, 
   Paper, 
-  Card, 
-  CardContent,
   Button,
-  IconButton,
-  Divider,
-  Grid,
-  Chip,
   useTheme,
   alpha,
   CircularProgress,
   Alert,
   Breadcrumbs,
   Link as MuiLink,
-  Tooltip
+  Snackbar,
+  Zoom
 } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import BookmarkIcon from '@mui/icons-material/Bookmark';
@@ -27,6 +23,7 @@ import HomeIcon from '@mui/icons-material/Home';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import verseService from '../api/verseService';
 import suraService from '../api/suraService';
+import VerseCard from '../components/common/VerseCard';
 
 const BookmarksPage = () => {
   const theme = useTheme();
@@ -34,6 +31,10 @@ const BookmarksPage = () => {
   const [verseDetails, setVerseDetails] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState('info');
+  const { expandedVerses, toggleVerseWordDetails } = useVerseDetails();
 
   // Fonction pour charger un verset spécifique avec toutes les informations
   const loadVerseDetails = async (suraNumber, ayaNumber) => {
@@ -57,12 +58,12 @@ const BookmarksPage = () => {
       // Récupérer les détails de la sourate
       const suraDetails = await suraService.getSuraByNumber(suraNumber);
       
-      // Combiner les informations
+      // Combiner les informations exactement comme dans SuraDetailPage
       return {
         ...verseDetails,
         _id: `${suraNumber}:${ayaNumber}`,
         suraName: suraDetails?.name || '',
-        suraNameFr: suraDetails?.nameFr || `Sourate ${suraNumber}`
+        suraNameFr: suraDetails?.nameFr || suraDetails?.nameTranslated || `Sourate ${suraNumber}`
       };
     } catch (error) {
       console.error(`Erreur lors du chargement du verset ${suraNumber}:${ayaNumber}:`, error);
@@ -73,7 +74,8 @@ const BookmarksPage = () => {
         textAr: 'Texte arabe non disponible',
         textFr: `Verset ${ayaNumber} de la sourate ${suraNumber}`,
         suraName: '',
-        suraNameFr: `Sourate ${suraNumber}`
+        suraNameFr: `Sourate ${suraNumber}`,
+        nameTranslated: `Sourate ${suraNumber}`
       };
     }
   };
@@ -120,6 +122,20 @@ const BookmarksPage = () => {
     loadBookmarks();
   }, []);
 
+  // Fonction pour afficher un message dans la snackbar
+  const showSnackbar = (message, severity = 'info') => {
+    setSnackbarMessage(message);
+    setSnackbarSeverity(severity);
+    setSnackbarOpen(true);
+  };
+
+  // La fonctionnalité de basculement des détails (mot à mot) est maintenant gérée par le hook useVerseDetails
+
+  const handleSnackbarClose = (event, reason) => {
+    if (reason === 'clickaway') return;
+    setSnackbarOpen(false);
+  };
+
   const removeBookmark = (verseId) => {
     // Mettre à jour l'état
     const updatedBookmarks = bookmarkedVerses.filter(id => id !== verseId);
@@ -130,6 +146,9 @@ const BookmarksPage = () => {
     
     // Mettre à jour les détails affichés
     setVerseDetails(verseDetails.filter(verse => verse._id !== verseId));
+    
+    // Afficher notification
+    showSnackbar('Verset retiré des favoris', 'success');
   };
 
   const clearAllBookmarks = () => {
@@ -137,10 +156,23 @@ const BookmarksPage = () => {
     setBookmarkedVerses([]);
     setVerseDetails([]);
     localStorage.removeItem('bookmarkedVerses');
+    showSnackbar('Tous les favoris ont été supprimés', 'info');
   };
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
+      {/* Snackbar pour notifications */}
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={4000}
+        onClose={handleSnackbarClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleSnackbarClose} severity={snackbarSeverity} sx={{ width: '100%' }}>
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
+
       {/* Fil d'Ariane */}
       <Breadcrumbs 
         separator={<NavigateNextIcon fontSize="small" />} 
@@ -158,14 +190,14 @@ const BookmarksPage = () => {
         </MuiLink>
         <Typography color="text.primary" sx={{ display: 'flex', alignItems: 'center' }}>
           <BookmarkIcon sx={{ mr: 0.5 }} fontSize="inherit" />
-          Favorie
+          Favoris
         </Typography>
       </Breadcrumbs>
 
       {/* En-tête */}
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h4" component="h1">
-          Mes Favories
+          Mes Favoris
         </Typography>
         {bookmarkedVerses.length > 0 && (
           <Button 
@@ -204,86 +236,45 @@ const BookmarksPage = () => {
           </Button>
         </Paper>
       ) : (
-        <Grid container spacing={3}>
+        <>
           {verseDetails.map((verse) => (
-            <Grid item xs={12} key={verse._id}>
-              <Card 
-                sx={{ 
-                  borderLeft: `4px solid ${theme.palette.primary.main}`,
-                  '&:hover': {
-                    boxShadow: `0 0 0 1px ${theme.palette.primary.main}`,
-                    backgroundColor: alpha(theme.palette.primary.main, 0.02)
+            <Zoom in={true} key={verse._id} style={{ transitionDelay: '100ms' }}>
+              <Box>
+                <VerseCard 
+                verse={verse}
+                isBookmarked={true}
+                onRemove={removeBookmark}
+                onToggleBookmark={() => {}} /* Fonction vide car déjà géré par onRemove */
+                onToggleDetails={() => toggleVerseWordDetails(verse._id)} /* Active/désactive l'affichage des détails */
+                showDetails={expandedVerses.includes(verse._id)}
+                onShare={() => {
+                  const shareText = `${verse.textAr}\n${verse.textFr}\n(Sourate ${verse.sura}, verset ${verse.aya})`;
+                  const shareUrl = `${window.location.origin}/sura/${verse.sura}#${verse.aya}`;
+                  
+                  if (navigator.share) {
+                    navigator.share({
+                      title: `Sourate ${verse.sura}, verset ${verse.aya}`,
+                      text: shareText,
+                      url: shareUrl
+                    })
+                  } else {
+                    navigator.clipboard.writeText(`${shareText} ${shareUrl}`)
+                      .then(() => showSnackbar('Verset copié dans le presse-papier', 'success'));
                   }
                 }}
-              >
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                    <Box>
-                      <Chip 
-                        label={`Sourate ${verse.suraNameFr || verse.suraName || verse.sura} Verset ${verse.aya}`} 
-                        size="small" 
-                        color="primary" 
-                        variant="outlined" 
-                        sx={{ fontSize: '0.75rem', maxWidth: '350px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-                        component={RouterLink}
-                        to={`/sura/${verse.sura}`}
-                        clickable
-                      />
-                    </Box>
-                    <Tooltip title="Retirer des favoris">
-                      <IconButton 
-                        color="error" 
-                        size="small" 
-                        onClick={() => removeBookmark(verse._id)}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-
-                  <Grid container spacing={2}>
-                    <Grid item xs={12}>
-                      <Typography 
-                        paragraph 
-                        align="right" 
-                        sx={{ 
-                          fontFamily: '"Noto Naskh Arabic", sans-serif',
-                          fontSize: '1.8rem',
-                          lineHeight: 1.8,
-                          mb: 2
-                        }}
-                      >
-                        {verse.textAr}
-                      </Typography>
-                    </Grid>
-                    
-                    <Grid item xs={12}>
-                      <Divider sx={{ my: 1 }} />
-                      <Typography 
-                        variant="body1" 
-                        paragraph 
-                        sx={{ fontStyle: 'italic' }}
-                      >
-                        {verse.textFr}
-                      </Typography>
-                    </Grid>
-                  </Grid>
-                  
-                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
-                    <Button 
-                      variant="outlined" 
-                      size="small" 
-                      component={RouterLink} 
-                      to={`/sura/${verse.sura}#${verse.aya}`}
-                    >
-                      Voir en contexte
-                    </Button>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
+                showActions={true}
+                theme={theme.palette.mode}
+                fontSize={{
+                  arabic: 1.8,
+                  translation: 1
+                }}
+                displayMode="standard"
+                showContextButton={true}
+              />
+              </Box>
+            </Zoom>
           ))}
-        </Grid>
+        </>
       )}
     </Container>
   );

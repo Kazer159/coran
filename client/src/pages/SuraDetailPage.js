@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import useVerseDetails from '../hooks/useVerseDetails';
 import { useParams, Link as RouterLink } from 'react-router-dom';
 import './SuraDetailPage.css'; // Import des styles pour la surbrillance des versets
 import {
@@ -9,16 +10,14 @@ import {
   Divider,
   Button,
   CircularProgress,
-  Card,
-  CardContent,
   Chip,
   IconButton,
-  Tooltip,
   Pagination,
   FormControlLabel,
   Switch,
   Tabs,
   Tab,
+  useTheme,
   Drawer,
   List,
   ListItem,
@@ -38,10 +37,6 @@ import {
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
-import ShareIcon from '@mui/icons-material/Share';
-import BookmarkIcon from '@mui/icons-material/Bookmark';
-import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import CloseIcon from '@mui/icons-material/Close';
 import LightModeIcon from '@mui/icons-material/LightMode';
@@ -54,9 +49,11 @@ import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import NightlightIcon from '@mui/icons-material/Nightlight';
 import suraService from '../api/suraService';
 import verseService from '../api/verseService';
+import VerseCard from '../components/common/VerseCard';
 
 const SuraDetailPage = () => {
   const { suraNumber } = useParams();
+  const muiTheme = useTheme(); // Utiliser useTheme comme dans BookmarksPage
   
   // États de base
   const [sura, setSura] = useState(null);
@@ -64,7 +61,7 @@ const SuraDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showWordDetails, setShowWordDetails] = useState(false);
-  const [expandedVerses, setExpandedVerses] = useState([]);
+  const { expandedVerses, toggleVerseWordDetails, isVerseExpanded, resetExpandedVerses, setVerseDetailsState } = useVerseDetails();
   const [currentPage, setCurrentPage] = useState(1);
   const versesPerPage = 20;
   
@@ -81,7 +78,7 @@ const SuraDetailPage = () => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState('success');
-  const [theme, setTheme] = useState('light'); // light, dark
+  const [themeMode, setThemeMode] = useState('light'); // light, dark - état local maintenu pour la compatibilité
 
   useEffect(() => {
     const fetchSuraDetails = async () => {
@@ -148,13 +145,13 @@ const SuraDetailPage = () => {
       // Charger le thème
       const savedTheme = localStorage.getItem('theme');
       if (savedTheme) {
-        setTheme(savedTheme);
+        setThemeMode(savedTheme);
       }
 
       // Charger les versets étendus avec analyse mot à mot
       const savedExpandedVerses = localStorage.getItem('expandedVerses');
       if (savedExpandedVerses) {
-        setExpandedVerses(JSON.parse(savedExpandedVerses));
+        setVerseDetailsState(JSON.parse(savedExpandedVerses));
       }
       
       return true;
@@ -225,29 +222,19 @@ const SuraDetailPage = () => {
     setShowWordDetails(!showWordDetails);
     // Si on active globalement, tous les versets sont étendus
     if (!showWordDetails) {
-      const allVerseIds = verses.map(verse => verse._id);
-      setExpandedVerses(allVerseIds);
+      // Pour activer tous les versets, nous devons appeler toggleVerseWordDetails pour chaque verset
+      verses.forEach(verse => {
+        if (!isVerseExpanded(verse._id)) {
+          toggleVerseWordDetails(verse._id);
+        }
+      });
     } else {
       // Si on désactive globalement, on réinitialise les versets étendus
-      setExpandedVerses([]);
+      resetExpandedVerses();
     }
   };
   
-  // Gérer l'affichage des détails de mots pour un verset spécifique
-  const toggleVerseWordDetails = (verseId) => {
-    setExpandedVerses(prev => {
-      let newExpandedVerses;
-      if (prev.includes(verseId)) {
-        newExpandedVerses = prev.filter(id => id !== verseId);
-      } else {
-        newExpandedVerses = [...prev, verseId];
-      }
-      
-      // Sauvegarder l'état d'expansion dans localStorage
-      saveUserPreferences('expandedVerses', newExpandedVerses);
-      return newExpandedVerses;
-    });
-  };
+  // La fonctionnalité de toggle est maintenant gérée par le hook useVerseDetails
   
   // Gestion des signets avec format standardisé 'sura:aya'
   const toggleBookmark = (verse) => {
@@ -299,8 +286,8 @@ const SuraDetailPage = () => {
   
   // Gestion du thème
   const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
+    const newTheme = themeMode === 'light' ? 'dark' : 'light';
+    setThemeMode(newTheme);
     saveUserPreferences('theme', newTheme);
     showSnackbar(`Thème ${newTheme === 'dark' ? 'sombre' : 'clair'} activé`, 'info');
   };
@@ -375,8 +362,8 @@ const SuraDetailPage = () => {
   return (
     <Box sx={{ 
       minHeight: '100vh', 
-      bgcolor: theme === 'dark' ? 'grey.900' : 'background.default',
-      color: theme === 'dark' ? 'white' : 'text.primary',
+      bgcolor: muiTheme.palette.mode === 'dark' ? 'grey.900' : 'background.default',
+      color: muiTheme.palette.mode === 'dark' ? 'white' : 'text.primary',
       position: 'relative'
     }}>
       {/* Snackbar pour notifications */}
@@ -405,8 +392,8 @@ const SuraDetailPage = () => {
         open={isMenuOpen}
       >
         <SpeedDialAction
-          icon={theme === 'dark' ? <LightModeIcon /> : <NightlightIcon />}
-          tooltipTitle={theme === 'dark' ? "Mode clair" : "Mode sombre"}
+          icon={muiTheme.palette.mode === 'dark' ? <LightModeIcon /> : <NightlightIcon />}
+          tooltipTitle={muiTheme.palette.mode === 'dark' ? "Mode clair" : "Mode sombre"}
           onClick={toggleTheme}
         />
         <SpeedDialAction
@@ -435,8 +422,8 @@ const SuraDetailPage = () => {
           '& .MuiDrawer-paper': { 
             width: { xs: '80%', sm: '350px' }, 
             boxSizing: 'border-box',
-            bgcolor: theme === 'dark' ? 'grey.900' : 'background.paper',
-            color: theme === 'dark' ? 'white' : 'text.primary',
+            bgcolor: muiTheme.palette.mode === 'dark' ? 'grey.900' : 'background.paper',
+            color: muiTheme.palette.mode === 'dark' ? 'white' : 'text.primary',
           },
         }}
       >
@@ -616,8 +603,8 @@ const SuraDetailPage = () => {
             <Paper sx={{ 
               p: 3, 
               mb: 4, 
-              bgcolor: theme === 'dark' ? 'grey.800' : 'background.paper',
-              boxShadow: theme === 'dark' ? '0 4px 20px rgba(0,0,0,0.5)' : undefined,
+              bgcolor: muiTheme.palette.mode === 'dark' ? 'grey.800' : 'background.paper',
+              boxShadow: muiTheme.palette.mode === 'dark' ? '0 4px 20px rgba(0,0,0,0.5)' : undefined,
               position: 'relative'
             }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -627,7 +614,7 @@ const SuraDetailPage = () => {
                   to="/suras"
                   variant="outlined"
                   size="small"
-                  sx={{ color: theme === 'dark' ? 'common.white' : 'primary.main' }}
+                  sx={{ color: muiTheme.palette.mode === 'dark' ? 'common.white' : 'primary.main' }}
                 >
                   Retour aux sourates
                 </Button>
@@ -636,10 +623,10 @@ const SuraDetailPage = () => {
                   <IconButton 
                     onClick={toggleTheme} 
                     size="small"
-                    color={theme === 'dark' ? 'inherit' : 'default'}
+                    color={muiTheme.palette.mode === 'dark' ? 'inherit' : 'default'}
                     sx={{ mr: 1 }}
                   >
-                    {theme === 'dark' ? <LightModeIcon /> : <NightlightIcon />}
+                    {muiTheme.palette.mode === 'dark' ? <LightModeIcon /> : <NightlightIcon />}
                   </IconButton>
                   
                   <IconButton 
@@ -730,187 +717,25 @@ const SuraDetailPage = () => {
           {/* Liste des versets */}
           {currentVerses.map((verse) => (
             <Zoom in={true} key={verse._id} style={{ transitionDelay: '100ms' }}>
-              <Card 
-                id={`verse-${verse.aya}`} 
-                sx={{ 
-                  mb: 3,
-                  bgcolor: theme === 'dark' ? 'grey.800' : 'background.paper',
-                  boxShadow: theme === 'dark' ? '0 2px 10px rgba(0,0,0,0.4)' : undefined,
-                  borderLeft: bookmarkedVerses.includes(`${verse.sura}:${verse.aya}`) ? '4px solid' : 'none',
-                  borderColor: 'primary.main',
-                  transition: 'all 0.3s ease'
-                }}
-              >
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Box>
-                      <Chip 
-                        label={`Sourate ${sura.nameFr || sura.name || sura.number} Verset ${verse.aya}`} 
-                        size="small" 
-                        color="primary" 
-                        variant="outlined" 
-                        sx={{ fontSize: '0.75rem', maxWidth: '350px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-                      />
-                    </Box>
-                    
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      
-                      <Tooltip title="Ajouter/retirer des signets">
-                        <IconButton size="small" onClick={() => toggleBookmark(verse)}>
-                          {bookmarkedVerses.includes(`${verse.sura}:${verse.aya}`) ? <BookmarkIcon fontSize="small" color="primary" /> : <BookmarkBorderIcon fontSize="small" />}
-                        </IconButton>
-                      </Tooltip>
-                      
-                      <Button 
-                        size="small" 
-                        variant={expandedVerses.includes(verse._id) ? "contained" : "outlined"}
-                        color="primary"
-                        onClick={() => toggleVerseWordDetails(verse._id)}
-                        sx={{ fontSize: '0.75rem', minWidth: '80px' }}
-                      >
-                        Mot à mot
-                      </Button>
-                    </Box>
-                    
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Tooltip title="Partager">
-                        <IconButton size="small" onClick={() => shareVerse(verse)}>
-                          <ShareIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      
-                      <Tooltip title="Voir le contexte">
-                        <IconButton size="small" component={RouterLink} to={`/verse/${verse._id}/context`}>
-                          <InfoOutlinedIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </Box>
-                  
-                  <Box sx={{ 
-                    mt: 2,
-                    display: displayMode === 'side-by-side' ? 'flex' : 'block',
-                    gap: 3,
-                    flexDirection: { xs: 'column', md: 'row' },
-                  }}>
-                    {/* Texte arabe */}
-                    <Box sx={{ 
-                      flex: displayMode === 'side-by-side' ? 1 : 'auto',
-                      order: { xs: 1, md: 2 }
-                    }}>
-                      <Typography 
-                        paragraph 
-                        align="right" 
-                        sx={{ 
-                          fontFamily: '"Noto Naskh Arabic", sans-serif',
-                          fontSize: `${fontSize.arabic}rem`,
-                          lineHeight: 1.8,
-                          mt: 1
-                        }}
-                      >
-                        {verse.textAr}
-                      </Typography>
-                    </Box>
-                    
-                    {displayMode !== 'reading' && (
-                      <Box sx={{ 
-                        flex: displayMode === 'side-by-side' ? 1 : 'auto',
-                        order: { xs: 2, md: 1 }
-                      }}>
-                        {/* Translittération */}
-                        <Typography 
-                          paragraph 
-                          align="left" 
-                          sx={{ 
-                            fontStyle: 'italic',
-                            fontSize: '0.9rem',
-                            color: theme === 'dark' ? 'grey.400' : 'text.secondary',
-                            display: displayMode === 'side-by-side' ? { xs: 'none', lg: 'block' } : 'block'
-                          }}
-                        >
-                          {verse.textTl}
-                        </Typography>
-                        
-                        {/* Traduction française */}
-                        <Typography 
-                          paragraph
-                          sx={{ 
-                            fontSize: `${fontSize.translation}rem`,
-                            mt: 1 
-                          }}
-                        >
-                          {verse.textFr}
-                        </Typography>
-                      </Box>
-                    )}
-                  </Box>
-                  
-                  {/* Détails des mots si l'option est activée pour ce verset */}
-                  {expandedVerses.includes(verse._id) && (
-                    <Box sx={{ mt: 2 }}>
-                      <Divider sx={{ mb: 2 }} />
-                      <Typography variant="subtitle2" gutterBottom>
-                        Analyse mot par mot:
-                      </Typography>
-                      <Box sx={{ 
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        gap: 2,
-                        justifyContent: 'center'
-                      }}>
-                        {verse.segments.map((segment, index) => (
-                          <Box 
-                            key={index} 
-                            sx={{ 
-                              display: 'flex', 
-                              flexDirection: 'column', 
-                              alignItems: 'center',
-                              width: { xs: '45%', sm: '30%', md: '22%', lg: '18%' },
-                              mb: 2,
-                              p: 1,
-                              border: '1px solid',
-                              borderColor: theme === 'dark' ? 'grey.700' : 'divider',
-                              borderRadius: 1,
-                              bgcolor: theme === 'dark' ? 'grey.900' : 'grey.50',
-                              '&:hover': {
-                                bgcolor: theme === 'dark' ? 'grey.800' : 'grey.100',
-                                transform: 'scale(1.03)',
-                                transition: 'all 0.2s ease'
-                              }
-                            }}
-                          >
-                            <Typography 
-                              sx={{ 
-                                fontFamily: '"Noto Naskh Arabic", sans-serif',
-                                fontSize: '1.2rem'
-                              }}
-                            >
-                              {segment.ar}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {segment.tl}
-                            </Typography>
-                            <Typography variant="body2" align="center">
-                              {segment.en}
-                            </Typography>
-                            {segment.root && segment.root !== 'unknown' && (
-                              <Chip 
-                                label={`Racine: ${segment.root}`} 
-                                size="small" 
-                                variant="outlined"
-                                component={RouterLink}
-                                to={`/word/${segment.root}`}
-                                clickable
-                                sx={{ mt: 1, fontSize: '0.7rem' }}
-                              />
-                            )}
-                          </Box>
-                        ))}
-                      </Box>
-                    </Box>
-                  )}
-                </CardContent>
-              </Card>
+              <Box id={`verse-${verse.aya}`}>
+                <VerseCard
+                  verse={{
+                    ...verse,
+                    suraName: sura.name,
+                    suraNameFr: sura.nameFr || sura.nameTranslated
+                  }}
+                  showActions={true}
+                  showDetails={expandedVerses.includes(verse._id)}
+                  isBookmarked={bookmarkedVerses.includes(`${verse.sura}:${verse.aya}`)}
+                  onToggleBookmark={() => toggleBookmark(verse)}
+                  onToggleDetails={() => toggleVerseWordDetails(verse._id)}
+                  onShare={() => shareVerse(verse)}
+                  theme={muiTheme.palette.mode}
+                  fontSize={fontSize}
+                  displayMode={displayMode}
+                  showContextButton={false}
+                />
+              </Box>
             </Zoom>
           ))}
           

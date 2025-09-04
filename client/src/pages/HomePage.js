@@ -1,27 +1,28 @@
 import React, { useState, useEffect } from 'react';
+import useVerseDetails from '../hooks/useVerseDetails';
+import useBookmarks from '../hooks/useBookmarks';
 import {
   Box, 
   Container, 
   Typography, 
   Button, 
-  Grid, 
   Card, 
   CardContent, 
   Paper,
   useTheme,
   alpha,
   Fade,
-  Chip,
   CircularProgress
 } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import SearchIcon from '@mui/icons-material/Search';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
-import FormatQuoteIcon from '@mui/icons-material/FormatQuote';
 import TravelExploreIcon from '@mui/icons-material/TravelExplore';
 import LanguageIcon from '@mui/icons-material/Language';
 import BookmarkIcon from '@mui/icons-material/Bookmark';
 import verseService from '../api/verseService';
+import suraService from '../api/suraService';
+import VerseCard from '../components/common/VerseCard';
 // Import des styles de cartes personnalisés
 import {
   accentTopCard,
@@ -35,12 +36,18 @@ const HomePage = () => {
   
   // État pour stocker le verset aléatoire
   const [randomVerse, setRandomVerse] = useState({
+    _id: "48:23",
     sura: 48,
     aya: 23,
     textAr: "سُنَّةَ ٱللَّهِ ٱلَّتِى قَدْ خَلَتْ مِن قَبْلُ ۖ وَلَن تَجِدَ لِسُنَّةِ ٱللَّهِ تَبْدِيلًا",
-    textFr: "Telle est la règle d'Allah établie depuis toujours. Et tu ne saurais trouver changement à la règle d'Allah."
+    textFr: "Telle est la règle d'Allah établie depuis toujours. Et tu ne saurais trouver changement à la règle d'Allah.",
+    suraName: "",
+    suraNameFr: "",
+    segments: []
   });
   const [loading, setLoading] = useState(false);
+  const { expandedVerses, toggleVerseWordDetails } = useVerseDetails();
+  const { bookmarkedVerses, toggleBookmark } = useBookmarks();
   
   // Charger un verset aléatoire au chargement de la page
   useEffect(() => {
@@ -48,7 +55,15 @@ const HomePage = () => {
       setLoading(true);
       try {
         const verse = await verseService.getRandomVerse();
-        setRandomVerse(verse);
+        
+        // Récupérer les informations de la sourate pour le verset
+        const suraData = await suraService.getSuraByNumber(verse.sura);
+        
+        setRandomVerse({
+          ...verse,
+          suraName: suraData.name,
+          suraNameFr: suraData.nameFr || suraData.nameTranslated
+        });
       } catch (error) {
         console.error("Erreur lors du chargement du verset aléatoire:", error);
         // Le verset par défaut reste en place en cas d'erreur
@@ -464,108 +479,60 @@ const HomePage = () => {
         
         {/* Citation du jour avec style amélioré */}
         <Box sx={{ my: 8 }}>
+          <Typography 
+            variant="h5" 
+            component="h2" 
+            align="center"
+            sx={{ ...sectionTitle(theme), textAlign: 'center', mb: 4, '&::after': { left: '50%', transform: 'translateX(-50%)' } }}
+          >
+            Verset du jour
+          </Typography>
+          
           <Fade in={true} timeout={800}>
             <Paper sx={{ 
               ...quoteStyle(theme),
-              p: { xs: 3, md: 5 }, 
               position: 'relative',
               boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
               borderRadius: 2,
               overflow: 'hidden',
+              width: '100%'
             }} className={theme.palette.mode === 'dark' ? 'arabesque-pattern arabesque-pattern--dark' : 'arabesque-pattern'}>
-              {/* Utilisation du motif via la classe CSS au lieu d'une image */}
-
-              <Grid container spacing={2} alignItems="center">
-                <Grid item xs={12} md={1}>
-                  <Box sx={{ 
-                    display: 'flex', 
-                    justifyContent: 'center',
-                    color: theme.palette.secondary.main
-                  }}>
-                    <FormatQuoteIcon sx={{ 
-                      fontSize: { xs: 60, md: 70 },
-                      opacity: 0.7,
-                      transform: 'rotate(180deg)' 
-                    }} />
-                  </Box>
-                </Grid>
-                <Grid item xs={12} md={11}>
-                  {loading ? (
-                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-                      <CircularProgress size={40} color="secondary" />
-                    </Box>
-                  ) : (
-                    <>
-                      <Box className="verse-text" sx={{ 
-                        p: 2, 
-                        borderRadius: 1
-                      }}>
-                        <Typography 
-                          className="arabic-text" 
-                          variant="h4" 
-                          gutterBottom 
-                          sx={{ 
-                            fontWeight: 'bold',
-                            lineHeight: 2.2,
-                            mb: 3,
-                            color: theme.palette.primary.main
-                          }}
-                        >
-                          {randomVerse.textAr}
-                        </Typography>
-                        <Typography variant="h6" paragraph sx={{ 
-                          fontStyle: 'italic',
-                          mb: 3,
-                          color: theme.palette.text.primary,
-                          fontWeight: 400,
-                          lineHeight: 1.6
-                        }}>
-                          {randomVerse.textFr}
-                        </Typography>
-                      </Box>
-                    </>
-                  )}
-                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                      <Chip 
-                        component={RouterLink}
-                        to={`/sura/${randomVerse.sura}#${randomVerse.aya}`}
-                        label={`${randomVerse.suraName || ''} (${randomVerse.sura})`}
-                        color="primary" 
-                        size="small" 
-                        variant="outlined"
-                        sx={{ 
-                          mr: 1, 
-                          fontWeight: 500, 
-                          direction: 'rtl',
-                          cursor: 'pointer',
-                          '&:hover': {
-                            bgcolor: alpha(theme.palette.primary.main, 0.1)
-                          }
-                        }}
-                        clickable
-                      />
-                      <Chip 
-                        component={RouterLink}
-                        to={`/sura/${randomVerse.sura}#${randomVerse.aya}`}
-                        label={`Sourate ${randomVerse.suraNameFr || ''} ${randomVerse.sura} verset ${randomVerse.aya}`}
-                        color="secondary" 
-                        size="small" 
-                        variant="outlined"
-                        sx={{ 
-                          mr: 1, 
-                          fontWeight: 500,
-                          cursor: 'pointer',
-                          '&:hover': {
-                            bgcolor: alpha(theme.palette.secondary.main, 0.1)
-                          }
-                        }}
-                        clickable
-                      />
-                    </Box>
-                  </Box>
-                </Grid>
-              </Grid>
+              {loading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+                  <CircularProgress size={40} color="secondary" />
+                </Box>
+              ) : (
+                <VerseCard
+                  verse={randomVerse}
+                  showActions={true}
+                  showDetails={expandedVerses.includes(randomVerse._id)}
+                  onToggleDetails={() => toggleVerseWordDetails(randomVerse._id)}
+                  isBookmarked={bookmarkedVerses.some(bm => bm._id === randomVerse._id)}
+                  onToggleBookmark={() => toggleBookmark(randomVerse)}
+                  onShare={() => {
+                    const shareText = `${randomVerse.textAr}\n${randomVerse.textFr}\n(Sourate ${randomVerse.suraNameFr || ''} ${randomVerse.sura}, verset ${randomVerse.aya})`;
+                    const shareUrl = `${window.location.origin}/sura/${randomVerse.sura}#${randomVerse.aya}`;
+                    
+                    if (navigator.share) {
+                      navigator.share({
+                        title: `Sourate ${randomVerse.sura}, verset ${randomVerse.aya}`,
+                        text: shareText,
+                        url: shareUrl
+                      });
+                    } else {
+                      // Fallback pour navigateurs sans API Web Share
+                      navigator.clipboard.writeText(`${shareText} - ${shareUrl}`)
+                        .then(() => {
+                          alert('Verset copié dans le presse-papier');
+                        })
+                        .catch(err => {
+                          console.error('Erreur lors de la copie: ', err);
+                        });
+                    }
+                  }}
+                  theme={theme.palette.mode}
+                />
+              )}
             </Paper>
           </Fade>
         </Box>
