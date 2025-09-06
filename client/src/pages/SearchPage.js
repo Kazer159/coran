@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import useVerseDetails from '../hooks/useVerseDetails';
 import {
   Container,
   Typography,
@@ -11,8 +12,6 @@ import {
   Select,
   MenuItem,
   Grid,
-  Card,
-  CardContent,
   Divider,
   CircularProgress,
   Pagination,
@@ -27,10 +26,18 @@ import FormatQuoteIcon from '@mui/icons-material/FormatQuote';
 import LocalLibraryIcon from '@mui/icons-material/LocalLibrary';
 import verseService from '../api/verseService';
 import wordService from '../api/wordService';
+import VerseCard from '../components/common/VerseCard';
+import suraNames from '../api/suraNames';
 
 // Fonction pour extraire les paramètres de recherche de l'URL
 const useQuery = () => {
   return new URLSearchParams(useLocation().search);
+};
+
+// Fonction pour obtenir le nom français d'une sourate à partir de son numéro
+const getSuraNameFr = (suraNumber) => {
+  const sura = suraNames.find(s => s.number === parseInt(suraNumber, 10));
+  return sura ? sura.nameFr : `Sourate ${suraNumber}`;
 };
 
 const SearchPage = () => {
@@ -38,15 +45,71 @@ const SearchPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   
+  // Hook pour gérer l'analyse mot par mot
+  const { toggleVerseWordDetails, isVerseExpanded } = useVerseDetails();
+  
+  // État pour gérer les signets/favoris
+  const [bookmarkedVerses, setBookmarkedVerses] = useState([]);
+
+  // Charger les favoris au chargement de la page
+  useEffect(() => {
+    const savedBookmarks = localStorage.getItem('quran-bookmarks');
+    if (savedBookmarks) {
+      try {
+        const parsedBookmarks = JSON.parse(savedBookmarks);
+        setBookmarkedVerses(parsedBookmarks);
+      } catch (error) {
+        console.error("Erreur lors du chargement des favoris:", error);
+      }
+    }
+  }, []);
+
+  // Gestion des favoris
+  const handleToggleBookmark = (verse) => {
+    const verseId = `${verse.sura}:${verse.aya}`;
+    setBookmarkedVerses(prevBookmarks => {
+      let newBookmarks;
+      if (prevBookmarks.some(bookmark => bookmark.id === verseId)) {
+        // Supprimer le signet
+        newBookmarks = prevBookmarks.filter(bookmark => bookmark.id !== verseId);
+      } else {
+        // Ajouter le signet
+        const newBookmark = {
+          id: verseId,
+          sura: verse.sura,
+          aya: verse.aya,
+          suraName: verse.suraName || '',
+          suraNameFr: verse.suraNameFr || '',
+          textAr: verse.textAr || '',
+          textFr: verse.textFr || '',
+          dateAdded: new Date().toISOString()
+        };
+        newBookmarks = [...prevBookmarks, newBookmark];
+      }
+      // Sauvegarder dans le localStorage
+      localStorage.setItem('quran-bookmarks', JSON.stringify(newBookmarks));
+      return newBookmarks;
+    });
+  };
+
+  // Vérifier si un verset est dans les favoris
+  const isVerseBookmarked = (verse) => {
+    if (!verse || !verse.sura || !verse.aya) return false;
+    const verseId = `${verse.sura}:${verse.aya}`;
+    return bookmarkedVerses.some(bookmark => bookmark.id === verseId);
+  };
+  
   // Extraire les paramètres de recherche de l'URL
   const initialSearchTerm = query.get('q') || '';
   const initialSearchMode = query.get('mode') || 'text';
   const initialLanguage = query.get('lang') || 'all';
   const initialSura = query.get('sura') || '';
   const initialAya = query.get('aya') || '';
+  const initialTranslitTerm = query.get('tl') || '';
   
   // États pour les paramètres de recherche
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
+  const [searchTranslitTerm, setSearchTranslitTerm] = useState(initialTranslitTerm);
   const [searchMode, setSearchMode] = useState(initialSearchMode);
   const [language, setLanguage] = useState(initialLanguage);
   const [suraFilter, setSuraFilter] = useState(initialSura);
@@ -61,20 +124,30 @@ const SearchPage = () => {
   const [totalResults, setTotalResults] = useState(0);
   
   // Effectuer la recherche quand les paramètres changent dans l'URL
-  // Ce useEffect est délibérément configuré pour ne réagir qu'aux changements de l'URL
-  // et non aux changements des valeurs initialSearchTerm, initialSura, initialAya
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Note: On utilise deliberément eslint-disable pour limiter les dépendances à location.search
+  // pour éviter une boucle infinie car performSearch modifie l'état qui pourrait déclencher à nouveau l'effet
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
-    if (initialSearchTerm || (initialSura && initialAya)) {
+    // Réinitialiser les états avec les paramètres de l'URL à chaque changement de recherche
+    setSearchTerm(query.get('q') || '');
+    setSearchTranslitTerm(query.get('tl') || '');
+    setSearchMode(query.get('mode') || 'text');
+    setLanguage(query.get('lang') || 'all');
+    setSuraFilter(query.get('sura') || '');
+    setAyaFilter(query.get('aya') || '');
+    
+    if (query.get('q') || (query.get('sura') && query.get('aya'))) {
       performSearch();
     }
   }, [location.search]);
+  /* eslint-enable react-hooks/exhaustive-deps */
   
   /* Note: Nous utilisons eslint-disable pour ce useEffect car nous voulons
      délibérément que la recherche ne se déclenche que lorsque l'URL change,
      et non lorsque les valeurs initiales ou la fonction performSearch changent */
   
-  const performSearch = async () => {
+  // Utiliser useCallback pour mémoiser la fonction performSearch
+  const performSearch = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -100,7 +173,19 @@ const SearchPage = () => {
           10
         );
         
-        setResults(response.occurrences);
+        // Débogage pour voir la structure de la réponse
+        console.log('Réponse pour recherche par racine:', response);
+        
+        // Traiter les résultats pour s'assurer que chaque occurrence a les données nécessaires
+        const processedOccurrences = response.occurrences.map(occ => {
+          // S'assurer que la translitération est disponible pour les segments et le verset
+          if (occ.segment && !occ.segment.tl) {
+            occ.segment.tl = ''; // Garantir qu'il y a au moins un champ vide
+          }
+          return occ;
+        });
+        
+        setResults(processedOccurrences);
         setTotalPages(response.totalPages);
         setTotalResults(response.totalResults);
       } else if (suraFilter && ayaFilter) {
@@ -123,7 +208,8 @@ const SearchPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchMode, searchTerm, language, currentPage, suraFilter, ayaFilter]);
   
   const handleSearch = (e) => {
     e.preventDefault();
@@ -134,6 +220,11 @@ const SearchPage = () => {
     if (searchMode === 'text' || searchMode === 'root') {
       searchParams.set('q', searchTerm);
       searchParams.set('mode', searchMode);
+      
+      // Ajouter le paramètre tl s'il existe
+      if (searchTranslitTerm) {
+        searchParams.set('tl', searchTranslitTerm);
+      }
       
       if (searchMode === 'text') {
         searchParams.set('lang', language);
@@ -311,163 +402,123 @@ const SearchPage = () => {
             <Divider sx={{ my: 2 }} />
           </Box>
           
-          {results.map((result, index) => (
-            <Card key={index} sx={{ mb: 3 }}>
-              <CardContent>
-                {/* Pour les résultats de recherche de texte */}
-                {searchMode === 'text' && (
-                  <>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <Chip 
-                        label={`${result.sura}:${result.aya}`} 
-                        size="small" 
-                        color="primary" 
-                        variant="outlined" 
-                      />
-                    </Box>
-                    
-                    <Typography 
-                      paragraph 
-                      align="right" 
-                      sx={{ 
-                        fontFamily: '"Noto Naskh Arabic", sans-serif',
-                        fontSize: { xs: '1.5rem', md: '2rem' },
-                        lineHeight: 1.8,
-                        mt: 2,
-                        direction: 'rtl'
-                      }}
-                    >
-                      {result.textAr}
-                    </Typography>
-                    
-                    <Typography paragraph>
-                      {result.textFr}
-                    </Typography>
-                  </>
-                )}
+          {results.map((result, index) => {
+            // Préparer les données du verset selon le mode de recherche
+            let verseData;
+            
+            if (searchMode === 'text') {
+              verseData = {
+                ...result,
+                // Assurer la compatibilité avec VerseCard
+                _id: result._id || `${result.sura}:${result.aya}`,
+                suraName: result.suraName,
+                suraNameFr: getSuraNameFr(result.sura)
+              };
+            } else if (searchMode === 'root') {
+              // Ajouter plus de débogage pour vérifier les données reçues
+              console.log('Données de résultat pour recherche par racine:', result);
+              
+              // Essayer de récupérer la translitération depuis plusieurs sources possibles
+              const translitText = result.verseTl || result.textTl || result.transliteration || '';
+              console.log('Transliteration récupérée:', translitText);
+              
+              verseData = {
+                sura: result.sura,
+                aya: result.aya,
+                textAr: result.verseTextAr || result.textAr || '',
+                textFr: result.verseTextFr || result.textFr || '',
+                // Définir explicitement la translitération
+                textTl: translitText,
+                // S'assurer que le segment contient la translittération
+                segments: result.segment ? [
+                  {
+                    ...result.segment,
+                    // S'assurer que la translitération du segment est disponible
+                    tl: result.segment.tl || ''
+                  }
+                ] : [],
+                _id: result._id || `${result.sura}:${result.aya}`,
+                suraName: result.suraName || '',
+                suraNameFr: getSuraNameFr(result.sura),
+                // Ajouter des métadonnées spécifiques pour la recherche par racine
+                rootInfo: {
+                  root: result.root || '',
+                  segment: result.segment || {}
+                }
+              };
+              
+              // Débogage pour vérifier la structure finale de verseData
+              console.log('Structure de verseData pour VerseCard:', verseData);
+            } else { // reference
+              verseData = {
+                ...result,
+                _id: result._id || `${result.sura}:${result.aya}`,
+                suraName: result.suraName,
+                suraNameFr: getSuraNameFr(result.sura)
+              };
+            }
+            
+            return (
+              <React.Fragment key={index}>
+                {/* Utiliser VerseCard pour tous les types de résultats */}
+                <VerseCard 
+                  verse={verseData} 
+                  showActions={true} 
+                  showDetails={isVerseExpanded(verseData._id || `${verseData.sura}:${verseData.aya}`)}
+                  isBookmarked={isVerseBookmarked(verseData)}
+                  onToggleBookmark={handleToggleBookmark}
+                  onToggleDetails={toggleVerseWordDetails}
+                  theme={document.documentElement.getAttribute('data-theme') || 'light'}
+                  fontSize={{
+                    arabic: 1.8,
+                    translation: 1
+                  }}
+                  displayMode="standard"
+                  showContextButton={true}
+                  searchTerm={searchTerm}
+                  searchTranslitTerm={searchTranslitTerm || searchTerm}
+                />
                 
-                {/* Pour les résultats de recherche par racine */}
-                {searchMode === 'root' && (
-                  <>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <Chip 
-                        label={`${result.sura}:${result.aya}`} 
-                        size="small" 
-                        color="primary" 
-                        variant="outlined" 
-                      />
+                {/* Si mode de recherche par racine et qu'on a des détails de segment */}
+                {searchMode === 'root' && result.segment && (
+                  <Box sx={{
+                    p: 2,
+                    mb: 3,
+                    mt: -2,
+                    backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
+                    borderRadius: 1
+                  }}>
+                    <Typography variant="subtitle2" gutterBottom>
                       <Chip 
                         label={`Racine: ${result.root}`} 
                         size="small" 
                         color="secondary" 
+                        sx={{ mr: 1 }}
                       />
-                    </Box>
-                    
-                    <Typography 
-                      paragraph 
-                      align="right" 
-                      sx={{ 
-                        fontFamily: '"Noto Naskh Arabic", sans-serif',
-                        fontSize: { xs: '1.5rem', md: '2rem' },
-                        lineHeight: 1.8,
-                        mt: 2,
-                        direction: 'rtl'
-                      }}
-                    >
-                      {result.verseTextAr}
-                      
-                      {result.segment && (
-                        <Box component="span" sx={{ 
-                          color: 'primary.main', 
-                          fontWeight: 'bold',
-                          mx: 1
-                        }}>
-                          {` ${result.segment.ar} `}
-                        </Box>
-                      )}
+                      Détails du mot:
                     </Typography>
-                    
-                    <Typography paragraph>
-                      {result.verseTextFr}
-                    </Typography>
-                    
-                    {result.segment && (
-                      <Box sx={{
-                        p: 2,
-                        backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
-                        borderRadius: 1
-                      }}>
-                        <Typography variant="subtitle2" gutterBottom>
-                          Détails du mot:
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={4}>
+                        <Typography variant="body2">
+                          <strong>Mot arabe:</strong> {result.segment.ar}
                         </Typography>
-                        <Grid container spacing={2}>
-                          <Grid item xs={12} sm={4}>
-                            <Typography variant="body2">
-                              <strong>Mot arabe:</strong> {result.segment.ar}
-                            </Typography>
-                          </Grid>
-                          <Grid item xs={12} sm={4}>
-                            <Typography variant="body2">
-                              <strong>Translittération:</strong> {result.segment.tl}
-                            </Typography>
-                          </Grid>
-                          <Grid item xs={12} sm={4}>
-                            <Typography variant="body2">
-                              <strong>Traduction:</strong> {result.segment.en}
-                            </Typography>
-                          </Grid>
-                        </Grid>
-                      </Box>
-                    )}
-                  </>
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        <Typography variant="body2">
+                          <strong>Translittération:</strong> {result.segment.tl || 'Non disponible'}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        <Typography variant="body2">
+                          <strong>Traduction:</strong> {result.segment.en || 'Non disponible'}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Box>
                 )}
-                
-                {/* Pour les résultats de recherche par référence */}
-                {searchMode === 'reference' && (
-                  <>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <Chip 
-                        label={`${result.sura}:${result.aya}`} 
-                        size="small" 
-                        color="primary" 
-                        variant="outlined" 
-                      />
-                    </Box>
-                    
-                    <Typography 
-                      paragraph 
-                      align="right" 
-                      sx={{ 
-                        fontFamily: '"Noto Naskh Arabic", sans-serif',
-                        fontSize: { xs: '1.5rem', md: '2rem' },
-                        lineHeight: 1.8,
-                        mt: 2,
-                        direction: 'rtl'
-                      }}
-                    >
-                      {result.textAr}
-                    </Typography>
-                    
-                    <Typography 
-                      paragraph 
-                      align="left" 
-                      sx={{ 
-                        fontStyle: 'italic',
-                        fontSize: '0.9rem',
-                        color: theme => theme.palette.text.secondary
-                      }}
-                    >
-                      {result.textTl}
-                    </Typography>
-                    
-                    <Typography paragraph>
-                      {result.textFr}
-                    </Typography>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+              </React.Fragment>
+            );
+          })}
           
           {/* Pagination */}
           {totalPages > 1 && (

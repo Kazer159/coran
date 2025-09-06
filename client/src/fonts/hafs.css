@@ -1,0 +1,14 @@
+/* Police Hafs (Uthmânî) pour le texte coranique */
+@font-face {
+  font-family: 'Hafs Uthmani';
+  src: url('./hafs-uthmani.woff2') format('woff2'),
+       url('./hafs-uthmani.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Classe pour utiliser facilement cette police */
+.hafs-text {
+  font-family: 'Hafs Uthmani', 'Scheherazade New', 'Amiri', serif;
+}

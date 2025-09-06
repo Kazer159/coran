@@ -28,171 +28,117 @@ const normalizeText = (text) => {
   return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 };
 
+// Dictionnaire pour stocker les correspondances arabe-translittération
+let arabicToTranslitMap = {};
+
+// Fonction pour extraire et stocker les correspondances entre mots arabes et translittérations à partir des segments
+const buildArabicTranslitMap = (segments) => {
+  if (!segments || !Array.isArray(segments)) return;
+  
+  arabicToTranslitMap = {}; // Réinitialiser le dictionnaire
+  
+  // Construire le dictionnaire de correspondances
+  segments.forEach(segment => {
+    if (segment.ar && segment.tl) {
+      arabicToTranslitMap[normalizeText(segment.ar)] = segment.tl;
+    }
+  });
+  
+  console.log('Dictionnaire arabe-translittération créé:', arabicToTranslitMap);
+};
+
+// Fonction pour trouver la translittération correspondant à un mot arabe
+const findTransliterationForArabic = (arabicWord) => {
+  if (!arabicWord) return null;
+  
+  const normalizedArabic = normalizeText(arabicWord);
+  return arabicToTranslitMap[normalizedArabic] || null;
+};
+
 // Fonction pour mettre en évidence les termes de recherche dans le texte arabe
-const highlightSearchTerm = (text, searchTerm, rootWord = null, rootHighlightColor = null) => {
+const highlightSearchTerm = (text, searchTerm) => {
   // Vérification des cas de base
-  if ((!searchTerm && !rootWord) || !text) return text;
+  if (!searchTerm || !text) return text;
   if (typeof text !== 'string') return text;
   
   try {
-    // Échapper les caractères spéciaux pour la regex
-    const escapeRegExp = (string) => {
-      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    };
+    const regex = new RegExp(`(${searchTerm})`, 'gi');
     
-    // Mot spécifique de la racine à mettre en surbrillance (priorité sur searchTerm)
-    if (rootWord && rootHighlightColor) {
-      const rootRegex = new RegExp(`(${escapeRegExp(rootWord)})`, 'gi');
-      
-      // Vérifier si le mot de la racine existe dans le texte
-      if (!rootRegex.test(text)) {
-        // Si le mot de la racine n'est pas trouvé, on fait la recherche normale
-        return highlightSearchTerm(text, searchTerm);
-      }
-      
-      // Réinitialiser lastIndex
-      rootRegex.lastIndex = 0;
-      
-      // Diviser le texte en parties
-      const parts = text.split(rootRegex);
-      
-      if (parts.length <= 1) {
-        return highlightSearchTerm(text, searchTerm);
-      }
-      
-      // Reconstruire avec mise en surbrillance spéciale pour le mot de la racine
-      const result = [];
-      
-      parts.forEach((part, i) => {
-        if (i % 2 === 1) {
-          // Partie correspondant au mot de la racine
-          result.push(
-            <span key={`root-highlight-${i}`} style={{ 
-              backgroundColor: rootHighlightColor,
-              fontWeight: 'bold',
-              padding: '0 2px',
-              borderRadius: '2px'
-            }}>
-              {part}
-            </span>
-          );
-        } else {
-          // Texte normal
-          result.push(part);
-        }
-      });
-      
-      return result;
-    }
-    
-    // Traitement standard pour le searchTerm si pas de rootWord spécifique
-    const searchRegex = new RegExp(`(${escapeRegExp(searchTerm)})`, 'gi');
-    
-    // Vérifier si le terme de recherche existe dans le texte
-    if (!searchRegex.test(text)) {
-      return text;
-    }
-    
-    // Réinitialiser lastIndex pour que la recherche recommence du début
-    searchRegex.lastIndex = 0;
-    
-    // Diviser le texte en parties correspondant ou non au terme de recherche
-    const parts = text.split(searchRegex);
+    // Divisez le texte selon le terme recherché
+    const parts = text.split(regex);
     
     // Si aucune correspondance, retourner le texte original
-    if (parts.length <= 1) {
-      return text;
-    }
+    if (parts.length === 1) return text;
     
-    // Reconstruire le texte avec mise en surbrillance des parties correspondantes
-    const result = [];
-    
-    parts.forEach((part, i) => {
-      // Si c'est une partie correspondant à la recherche (index impair)
-      if (i % 2 === 1) {
-        result.push(
-          <span key={`highlight-${i}`} style={{ backgroundColor: 'rgba(255, 215, 0, 0.3)', fontWeight: 'bold' }}>
-            {part}
-          </span>
-        );
-      } else {
-        // Texte normal
-        result.push(part);
+    // Retourner le texte avec des portions en surbrillance
+    return parts.map((part, index) => {
+      if (part.toLowerCase() === searchTerm.toLowerCase()) {
+        return <span key={index} style={{ backgroundColor: 'rgba(255, 215, 0, 0.3)', fontWeight: 'bold' }}>{part}</span>;
       }
+      return part;
     });
-    
-    return result;
   } catch (error) {
     console.error('Erreur dans highlightSearchTerm:', error);
     return text;
   }
 };
 
-// Fonction spéciale pour la translitération qui prend en compte les accents
-const highlightTransliteration = (text, searchTerm, searchTranslitTerm = '') => {
+// Fonction pour souligner un terme spécifique dans la translittération
+const underlineTransliteration = (text, termToUnderline) => {
   // Vérification des cas de base
-  if ((!searchTerm && !searchTranslitTerm) || !text) return text;
+  if (!termToUnderline || !text) return text;
   if (typeof text !== 'string') return text;
   
   try {
-    // Utiliser le terme spécifique pour la translitération s'il existe, sinon utiliser le terme de recherche général
-    const termToUse = searchTranslitTerm || searchTerm;
-    
     // Normaliser le texte et le terme pour la comparaison
-    const normalizedSearchTerm = normalizeText(termToUse);
+    const normalizedTerm = normalizeText(termToUnderline);
     const normalizedText = normalizeText(text);
     
-    // Si le terme normalisé n'est pas dans le texte normalisé, essayer des morceaux du terme
-    let matchFound = false;
-    let startIndex = -1;
-    let endIndex = -1;
-    
-    // Essayer de trouver le terme complet
-    if (normalizedText.includes(normalizedSearchTerm)) {
-      startIndex = normalizedText.indexOf(normalizedSearchTerm);
-      endIndex = startIndex + normalizedSearchTerm.length;
-      matchFound = true;
-    } else {
-      // Si la recherche complète échoue, essayer de chercher des mots individuels
-      const words = normalizedSearchTerm.split(/\s+/).filter(word => word.length > 2); // Mots de plus de 2 caractères
-      
-      for (const word of words) {
-        if (normalizedText.includes(word)) {
-          startIndex = normalizedText.indexOf(word);
-          endIndex = startIndex + word.length;
-          matchFound = true;
-          break;
-        }
-      }
-      
-      // Si on ne trouve toujours pas, ne rien souligner
-      if (!matchFound) {
-        return text;
-      }
+    // Vérifier si le terme est présent dans le texte
+    if (!normalizedText.includes(normalizedTerm)) {
+      return text; // Terme non trouvé
     }
     
-    // Si nous avons trouvé une correspondance
-    if (matchFound && startIndex >= 0 && endIndex > startIndex) {
-      // Découper le texte original en trois parties: avant, correspondance, après
-      const beforeMatch = text.substring(0, startIndex);
-      const matchText = text.substring(startIndex, endIndex);
-      const afterMatch = text.substring(endIndex);
-      
-      // Retourner le texte avec la partie correspondante soulignée
-      return [
-        beforeMatch,
-        <span key="highlight" style={{ textDecoration: 'underline', fontWeight: 'bold' }}>
-          {matchText}
-        </span>,
-        afterMatch
-      ];
-    }
+    // Trouver la position exacte du terme
+    const startIndex = normalizedText.indexOf(normalizedTerm);
+    const endIndex = startIndex + normalizedTerm.length;
     
-    return text;
+    // Découper le texte en trois parties
+    const beforeMatch = text.substring(0, startIndex);
+    const matchText = text.substring(startIndex, endIndex);
+    const afterMatch = text.substring(endIndex);
+    
+    // Retourner le texte avec la partie correspondante soulignée
+    return [
+      beforeMatch,
+      <span key="highlight" style={{ textDecoration: 'underline', fontWeight: 'bold' }}>
+        {matchText}
+      </span>,
+      afterMatch
+    ];
   } catch (error) {
-    console.error('Erreur dans highlightTransliteration:', error);
+    console.error('Erreur dans underlineTransliteration:', error);
     return text;
   }
+};
+
+// Fonction principale pour la mise en surbrillance des translittérations
+const highlightTransliteration = (text, searchTerm, segments = null) => {
+  // Mettre à jour le dictionnaire de correspondances si des segments sont fournis
+  if (segments) {
+    buildArabicTranslitMap(segments);
+  }
+  
+  // Si nous avons une correspondance directe pour le terme recherché
+  const translitEquivalent = findTransliterationForArabic(searchTerm);
+  
+  if (translitEquivalent) {
+    // Souligner la translittération correspondante
+    return underlineTransliteration(text, translitEquivalent);
+  }
+  
+  // Méthode de secours: essayer de trouver le terme directement
+  return underlineTransliteration(text, searchTerm);
 };
 
 const VerseCard = ({
@@ -211,8 +157,7 @@ const VerseCard = ({
   },
   displayMode = 'standard', // 'standard', 'reading', 'side-by-side'
   showContextButton = true,
-  searchTerm = '',
-  searchTranslitTerm = ''
+  searchTerm = ''
 }) => {
   const muiTheme = useTheme();
   const navigate = useNavigate();
@@ -259,53 +204,8 @@ ${verse.textFr}
   };
 
   // Fonction pour rechercher des mots similaires dans le Coran
-  const searchSimilarWords = (wordAr, wordTl = '') => {
-    // Créer une nouvelle URL avec seulement les paramètres nécessaires
-    const searchParams = new URLSearchParams();
-    searchParams.set('q', wordAr); 
-    searchParams.set('mode', 'text');
-    
-    if (wordTl) {
-      searchParams.set('tl', wordTl);
-    }
-    
-    // Utiliser window.location.href pour forcer un rechargement complet
-    // Cela garantit que la page est complètement remontrée avec les nouveaux paramètres
-    const newUrl = `/search?${searchParams.toString()}`;
-    
-    // Si nous sommes déjà sur la page de recherche, forcer un rechargement complet
-    if (window.location.pathname === '/search') {
-      window.location.href = newUrl;
-    } else {
-      // Sinon, utiliser la navigation React Router normale
-      navigate(newUrl);
-    }
-  };
-
-  // Fonction pour rechercher des mots par racine
-  const searchByRoot = (root, transliteration = '') => {
-    if (!root) return;
-    
-    // Créer une nouvelle URL avec les paramètres de recherche par racine
-    const searchParams = new URLSearchParams();
-    searchParams.set('q', root);
-    searchParams.set('mode', 'root'); // Important: mode racine
-    
-    // Ajouter la translitération si disponible
-    if (transliteration) {
-      searchParams.set('tl', transliteration);
-    }
-    
-    // Utiliser window.location.href pour forcer un rechargement complet
-    const newUrl = `/search?${searchParams.toString()}`;
-    
-    // Si nous sommes déjà sur la page de recherche, forcer un rechargement complet
-    if (window.location.pathname === '/search') {
-      window.location.href = newUrl;
-    } else {
-      // Sinon, utiliser la navigation React Router normale
-      navigate(newUrl);
-    }
+  const searchSimilarWords = (word) => {
+    navigate(`/search?q=${encodeURIComponent(word)}`);
   };
 
   // Déterminer l'ID du verset (format standardisé)
@@ -444,56 +344,91 @@ ${verse.textFr}
               paragraph
               align="right"
               sx={{
-                fontFamily: '"Hafs Uthmani", "Scheherazade New", "Amiri", serif',
+                fontFamily: '"Noto Naskh Arabic", sans-serif',
                 fontSize: `${fontSize.arabic}rem`,
                 lineHeight: 1.8,
-                mt: 1,
-                color: '#4dabf5' // Bleu clair
+                mt: 1
               }}
             >
-              {/* Vérifier si nous sommes dans le mode de recherche par racine et qu'il y a un segment */}
-              {verse.rootInfo && verse.rootInfo.root && verse.rootInfo.segment ? 
-                // Mettre en surbrillance spécifique pour le mot correspondant à la racine
-                highlightSearchTerm(
-                  verse.textAr, 
-                  searchTerm, 
-                  verse.rootInfo.segment.ar, 
-                  'rgba(255, 145, 0, 0.4)' // Couleur orange pour la mise en surbrillance de la racine
-                )
-              : 
-                // Recherche normale
-                highlightSearchTerm(verse.textAr, searchTerm)
-              }
+              {highlightSearchTerm(verse.textAr, searchTerm)}
             </Typography>
           </Box>
 
-          {displayMode !== 'reading' && (
+      {/* Détails des mots si l'option est activée pour ce verset */}
+      {showDetails && verse.segments && (
+        <Box sx={{ mt: 2 }}>
+          <Divider sx={{ mb: 2 }} />
+          <Typography variant="subtitle2" gutterBottom>
+            Analyse mot par mot:
+          </Typography>
+          {/* Débogage pour voir la structure des données */}
+          {console.log('Structure des segments reçus:', JSON.stringify(verse.segments))}
+          
+          {/* Vérifie si nous avons des segments à afficher */}
+          {verse.segments && verse.segments.length > 0 ? (
             <Box sx={{
-              flex: displayMode === 'side-by-side' ? 1 : 'auto',
-              order: { xs: 2, md: 1 }
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 2,
+              justifyContent: 'center'
             }}>
-              {/* Translitération - toujours afficher */}
-              {
-                <Typography
-                  paragraph
-                  align="left"
-                  sx={{
-                    fontStyle: 'italic',
-                    fontSize: '0.9rem',
-                    color: theme === 'dark' ? 'grey.400' : 'text.secondary',
-                    display: displayMode === 'side-by-side' ? { xs: 'none', lg: 'block' } : 'block'
-                  }}
-                >
-                  {verse.textTl ? 
-                    highlightTransliteration(verse.textTl, searchTerm, searchTranslitTerm) : 
-                    <i style={{ color: theme === 'dark' ? '#AAA' : '#777' }}>[Translitération non disponible pour ce verset]</i>
-                  }
-                </Typography>
-              }
-
-              {/* Traduction française */}
-              <Typography
-                paragraph
+              {verse.segments.map((segment, index) => {
+                console.log(`Segment ${index}:`, segment);
+                return (
+                  <Box
+                    key={index}
+                    sx={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      width: { xs: '45%', sm: '30%', md: '22%', lg: '18%' },
+                      mb: 2,
+                      p: 1,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 1,
+                      bgcolor: theme === 'dark' ? 'rgba(66, 66, 66, 0.6)' : 'rgba(250, 250, 250, 0.8)',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+                      '&:hover': {
+                        boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+                        bgcolor: theme === 'dark' ? 'rgba(80, 80, 80, 0.7)' : 'rgba(255, 255, 255, 0.9)',
+                      }
+                    }}
+                  >
+                    {/* Conteneur pour le mot arabe avec icône de recherche en haut à droite */}
+                    <Box sx={{ 
+                      position: 'relative',
+                      width: '100%',
+                      mb: 0.5,
+                      pt: 1.5 // Ajouter de l'espace en haut pour l'icône
+                    }}>
+                      {/* Icône de recherche en haut à droite */}
+                      <Tooltip title="Rechercher des mots similaires">
+                        <IconButton 
+                          size="small" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            searchSimilarWords(segment.ar);
+                          }}
+                          sx={{ 
+                            position: 'absolute',
+                            top: -8,
+                            right: -8,
+                            opacity: 0.7,
+                            backgroundColor: theme === 'dark' ? 'rgba(30, 30, 30, 0.4)' : 'rgba(240, 240, 240, 0.7)',
+                            padding: '2px',
+                            minWidth: '20px',
+                            height: '20px',
+                            width: '20px',
+                            '&:hover': {
+                              opacity: 1,
+                              backgroundColor: theme === 'dark' ? 'rgba(50, 50, 50, 0.8)' : 'rgba(230, 230, 230, 1)'
+                            }
+                          }}
+                        >
+                          <SearchIcon sx={{ fontSize: '14px' }} />
+                        </IconButton>
+                      </Tooltip>
                 sx={{
                   fontSize: `${fontSize.translation}rem`,
                   mt: 1
@@ -559,7 +494,7 @@ ${verse.textFr}
                             size="small" 
                             onClick={(e) => {
                               e.stopPropagation();
-                              searchSimilarWords(segment.ar, segment.tl);
+                              searchSimilarWords(segment.ar);
                             }}
                             sx={{ 
                               position: 'absolute',
@@ -583,45 +518,13 @@ ${verse.textFr}
                         
                         {/* Mot arabe */}
                         <Typography align="center" sx={{ 
-                          fontFamily: '"Hafs Uthmani", "Scheherazade New", "Amiri", serif', 
+                          fontFamily: '"Noto Naskh Arabic", sans-serif', 
                           fontSize: '1.3rem',
                           fontWeight: 500,
-                          color: '#4dabf5', // Bleu clair
+                          color: theme === 'dark' ? 'primary.light' : 'primary.main',
                         }}>
                           {highlightSearchTerm(segment.ar || '?', searchTerm)}
                         </Typography>
-                        
-                        {/* Racine du mot arabe si disponible - cliquable pour recherche */}
-                        {segment.root && segment.root !== 'unknown' && segment.root !== 'undefined' && (
-                          <Typography 
-                            align="center" 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              searchByRoot(segment.root, segment.tl);
-                            }}
-                            sx={{
-                              fontFamily: '"Hafs Uthmani", "Scheherazade New", "Amiri", serif',
-                              fontSize: '0.9rem',
-                              fontWeight: 400,
-                              color: '#4dabf5', // Bleu clair
-                              mt: 0.5,
-                              mb: 0.5,
-                              border: '1px dashed',
-                              borderColor: theme === 'dark' ? 'secondary.dark' : 'secondary.light',
-                              borderRadius: '4px',
-                              px: 1,
-                              py: 0.2,
-                              display: 'inline-block',
-                              cursor: 'pointer',  // Indique que c'est cliquable
-                              '&:hover': {
-                                backgroundColor: theme === 'dark' ? 'rgba(100, 100, 100, 0.2)' : 'rgba(200, 200, 200, 0.3)',
-                                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)',
-                              },
-                            }}
-                          >
-                            {segment.root}
-                          </Typography>
-                        )}
                       </Box>
                       
                       {/* Traduction sous le mot arabe (utilise 'en' car c'est ce qui existe dans le schéma) */}
@@ -641,7 +544,7 @@ ${verse.textFr}
                         fontStyle: 'italic',
                         color: theme === 'dark' ? 'grey.400' : 'text.secondary'
                       }}>
-                        {highlightTransliteration(segment.tl || 'Translitération non disponible', searchTerm, searchTranslitTerm)}
+                        {highlightTransliteration(segment.tl || 'Translitération non disponible', searchTerm)}
                       </Typography>
                     </Box>
                   );

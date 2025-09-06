@@ -90,6 +90,8 @@ exports.getWordOccurrencesWithContext = async (req, res) => {
           position: word.pos,
           verseTextAr: verse ? verse.textAr : null,
           verseTextFr: verse ? verse.textFr : null,
+          // Ajouter la translitération du verset complet
+          verseTl: verse ? verse.textTl : null,
           segment: verse ? verse.segments.find(s => s.pos === word.pos) : null
         };
       })

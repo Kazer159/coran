@@ -1,0 +1,608 @@
+import React, { useEffect, useState } from 'react';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Chip,
+  IconButton,
+  Button,
+  Divider,
+  Tooltip,
+  useTheme
+} from '@mui/material';
+import BookmarkIcon from '@mui/icons-material/Bookmark';
+import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
+import ShareIcon from '@mui/icons-material/Share';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import DeleteIcon from '@mui/icons-material/Delete';
+import SearchIcon from '@mui/icons-material/Search';
+
+/**
+ * Composant réutilisable pour afficher un verset du Coran
+ */
+// Fonction pour normaliser le texte (supprimer les accents)
+const normalizeText = (text) => {
+  if (!text) return '';
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+};
+
+// Dictionnaire pour stocker les correspondances arabe-translittération
+let arabicToTranslitMap = {};
+
+// Fonction pour extraire et stocker les correspondances entre mots arabes et translittérations à partir des segments
+const buildArabicTranslitMap = (segments) => {
+  if (!segments || !Array.isArray(segments)) return;
+  
+  arabicToTranslitMap = {}; // Réinitialiser le dictionnaire
+  
+  // Construire le dictionnaire de correspondances
+  segments.forEach(segment => {
+    if (segment.ar && segment.tl) {
+      arabicToTranslitMap[normalizeText(segment.ar)] = segment.tl;
+    }
+  });
+  
+  console.log('Dictionnaire arabe-translittération créé:', arabicToTranslitMap);
+};
+
+// Fonction pour trouver la translittération correspondant à un mot arabe
+const findTransliterationForArabic = (arabicWord) => {
+  if (!arabicWord) return null;
+  
+  const normalizedArabic = normalizeText(arabicWord);
+  return arabicToTranslitMap[normalizedArabic] || null;
+};
+
+// Fonction pour mettre en évidence les termes de recherche dans le texte arabe
+const highlightSearchTerm = (text, searchTerm) => {
+  // Vérification des cas de base
+  if (!searchTerm || !text) return text;
+  if (typeof text !== 'string') return text;
+  
+  try {
+    const regex = new RegExp(`(${searchTerm})`, 'gi');
+    
+    // Divisez le texte selon le terme recherché
+    const parts = text.split(regex);
+    
+    // Si aucune correspondance, retourner le texte original
+    if (parts.length === 1) return text;
+    
+    // Retourner le texte avec des portions en surbrillance
+    return parts.map((part, index) => {
+      if (part.toLowerCase() === searchTerm.toLowerCase()) {
+        return <span key={index} style={{ backgroundColor: 'rgba(255, 215, 0, 0.3)', fontWeight: 'bold' }}>{part}</span>;
+      }
+      return part;
+    });
+  } catch (error) {
+    console.error('Erreur dans highlightSearchTerm:', error);
+    return text;
+  }
+};
+
+// Fonction pour souligner un terme spécifique dans la translittération
+const underlineTransliteration = (text, termToUnderline) => {
+  // Vérification des cas de base
+  if (!termToUnderline || !text) return text;
+  if (typeof text !== 'string') return text;
+  
+  try {
+    // Normaliser le texte et le terme pour la comparaison
+    const normalizedTerm = normalizeText(termToUnderline);
+    const normalizedText = normalizeText(text);
+    
+    // Vérifier si le terme est présent dans le texte
+    if (!normalizedText.includes(normalizedTerm)) {
+      return text; // Terme non trouvé
+    }
+    
+    // Trouver la position exacte du terme
+    const startIndex = normalizedText.indexOf(normalizedTerm);
+    const endIndex = startIndex + normalizedTerm.length;
+    
+    // Découper le texte en trois parties
+    const beforeMatch = text.substring(0, startIndex);
+    const matchText = text.substring(startIndex, endIndex);
+    const afterMatch = text.substring(endIndex);
+    
+    // Retourner le texte avec la partie correspondante soulignée
+    return [
+      beforeMatch,
+      <span key="highlight" style={{ textDecoration: 'underline', fontWeight: 'bold' }}>
+        {matchText}
+      </span>,
+      afterMatch
+    ];
+  } catch (error) {
+    console.error('Erreur dans underlineTransliteration:', error);
+    return text;
+  }
+};
+
+// Fonction principale pour la mise en surbrillance des translittérations
+const highlightTransliteration = (text, searchTerm, segments = null) => {
+  // Mettre à jour le dictionnaire de correspondances si des segments sont fournis
+  if (segments) {
+    buildArabicTranslitMap(segments);
+  }
+  
+  // Si nous avons une correspondance directe pour le terme recherché
+  const translitEquivalent = findTransliterationForArabic(searchTerm);
+  
+  if (translitEquivalent) {
+    // Souligner la translittération correspondante
+    return underlineTransliteration(text, translitEquivalent);
+  }
+  
+  // Méthode de secours: essayer de trouver le terme directement
+  return underlineTransliteration(text, searchTerm);
+};
+
+const VerseCard = ({
+  verse,
+  showActions = true,
+  showDetails = false,
+  isBookmarked = false,
+  onToggleBookmark,
+  onToggleDetails,
+  onRemove,
+  onShare,
+  theme = 'light',
+  fontSize = {
+    arabic: 1.8,
+    translation: 1
+  },
+  displayMode = 'standard', // 'standard', 'reading', 'side-by-side'
+  showContextButton = true,
+  searchTerm = ''
+}) => {
+  const muiTheme = useTheme();
+  const navigate = useNavigate();
+  
+  // State pour stocker le dictionnaire de correspondances arabe-translitération
+  const [arabicTranslitDictionary, setArabicTranslitDictionary] = useState({});
+  
+  // Utiliser useEffect pour construire le dictionnaire arabe-translitération
+  useEffect(() => {
+    // Construire le dictionnaire si nous avons des segments disponibles
+    if (verse && verse.segments && Array.isArray(verse.segments)) {
+      buildArabicTranslitMap(verse.segments);
+      console.log('Dictionnaire arabe-translitération construit pour le verset', verse.sura + ':' + verse.aya);
+    }
+  }, [verse]);
+  
+  // Fonction pour partager un verset
+  const handleShare = (e) => {
+    e.stopPropagation();
+    if (onShare) {
+      onShare(verse);
+    } else {
+      const shareText = `${verse.textAr}
+${verse.textFr}
+(Sourate ${verse.sura} ${verse.suraNameFr || verse.suraName || ''}, verset ${verse.aya})`;
+      const shareUrl = `${window.location.origin}/sura/${verse.sura}#${verse.aya}`;
+      
+      if (navigator.share) {
+        navigator.share({
+          title: `Sourate ${verse.sura} ${verse.suraNameFr || verse.suraName || ''}, verset ${verse.aya}`,
+          text: shareText,
+          url: shareUrl
+        }).catch(() => {
+          copyToClipboard(`${shareText} ${shareUrl}`);
+        });
+      } else {
+        copyToClipboard(`${shareText} ${shareUrl}`);
+      }
+    }
+  };
+
+  // Fonction pour copier dans le presse-papiers
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        console.log('Texte copié dans le presse-papier');
+      })
+      .catch((err) => {
+        console.error('Erreur lors de la copie du texte:', err);
+      });
+  };
+
+  // Fonction pour naviguer vers le verset dans son contexte
+  const viewInContext = () => {
+    navigate(`/sura/${verse.sura}#${verse.aya}`);
+  };
+
+  // Fonction pour rechercher des mots similaires dans le Coran
+  const searchSimilarWords = (word) => {
+    navigate(`/search?q=${encodeURIComponent(word)}`);
+  };
+
+  // Déterminer l'ID du verset (format standardisé)
+  const verseId = `${verse.sura}:${verse.aya}`;
+
+  return (
+    <Card
+      id={`verse-${verse.aya}`}
+      sx={{
+        mb: 3,
+        bgcolor: theme === 'dark' ? 'grey.800' : 'background.paper',
+        boxShadow: theme === 'dark' ? '0 2px 10px rgba(0,0,0,0.4)' : undefined,
+        borderLeft: isBookmarked ? '4px solid' : 'none',
+        borderColor: 'primary.main',
+        transition: 'all 0.3s ease',
+        '&:hover': {
+          boxShadow: `0 0 0 1px ${muiTheme.palette.primary.main}`,
+          backgroundColor: muiTheme.palette.action.hover
+        }
+      }}
+    >
+      <CardContent>
+        {/* En-tête du verset avec numéro et actions */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box>
+            <Chip
+              label={`Sourate ${verse.sura} ${verse.suraNameFr || verse.suraName || ''} Verset ${verse.aya}`}
+              size="small"
+              color="primary"
+              variant="outlined"
+              sx={{ 
+                fontSize: '0.75rem', 
+                maxWidth: '350px', 
+                whiteSpace: 'nowrap', 
+                overflow: 'hidden', 
+                textOverflow: 'ellipsis' 
+              }}
+              component={RouterLink}
+              to={`/sura/${verse.sura}`}
+              clickable
+            />
+          </Box>
+
+          {showActions && (
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              {/* Bouton pour ajouter/supprimer des favoris */}
+              {onToggleBookmark && (
+                <Tooltip title={isBookmarked ? "Retirer des favoris" : "Ajouter aux favoris"}>
+                  <IconButton 
+                    size="small" 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleBookmark(verse);
+                    }}
+                  >
+                    {isBookmarked ? (
+                      <BookmarkIcon fontSize="small" color="primary" />
+                    ) : (
+                      <BookmarkBorderIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                </Tooltip>
+              )}
+
+              {/* Bouton pour supprimer (utilisé dans la page des favoris) */}
+              {onRemove && (
+                <Tooltip title="Retirer des favoris">
+                  <IconButton 
+                    color="error" 
+                    size="small" 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemove(verseId);
+                    }}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              )}
+
+              {/* Bouton pour afficher les détails (analyse mot à mot) */}
+              {onToggleDetails && (
+                <Button 
+                  size="small" 
+                  variant={showDetails ? "contained" : "outlined"}
+                  color="primary"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleDetails(verse._id);
+                  }}
+                  sx={{ fontSize: '0.75rem', minWidth: '80px' }}
+                >
+                  Mot à mot
+                </Button>
+              )}
+            </Box>
+          )}
+
+          {/* Actions supplémentaires */}
+          {showActions && (
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              {/* Bouton pour partager */}
+              <Tooltip title="Partager">
+                <IconButton size="small" onClick={handleShare}>
+                  <ShareIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              
+              {/* Bouton pour voir le contexte */}
+              <Tooltip title="Voir le contexte">
+                <IconButton 
+                  size="small" 
+                  component={RouterLink} 
+                  to={`/verse/${verse._id}/context`}
+                >
+                  <InfoOutlinedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
+          )}
+        </Box>
+
+        {/* Contenu du verset */}
+        <Box sx={{
+          mt: 2,
+          display: displayMode === 'side-by-side' ? 'flex' : 'block',
+          gap: 3,
+          flexDirection: { xs: 'column', md: 'row' },
+        }}>
+          {/* Texte arabe */}
+          <Box sx={{
+            flex: displayMode === 'side-by-side' ? 1 : 'auto',
+            order: { xs: 1, md: 2 }
+          }}>
+            <Typography
+              paragraph
+              align="right"
+              sx={{
+                fontFamily: '"Noto Naskh Arabic", sans-serif',
+                fontSize: `${fontSize.arabic}rem`,
+                lineHeight: 1.8,
+                mt: 1
+              }}
+            >
+              {highlightSearchTerm(verse.textAr, searchTerm)}
+            </Typography>
+          </Box>
+
+      {/* Détails des mots si l'option est activée pour ce verset */}
+      {showDetails && verse.segments && (
+        <Box sx={{ mt: 2 }}>
+          <Divider sx={{ mb: 2 }} />
+          <Typography variant="subtitle2" gutterBottom>
+            Analyse mot par mot:
+          </Typography>
+          {/* Débogage pour voir la structure des données */}
+          {console.log('Structure des segments reçus:', JSON.stringify(verse.segments))}
+          
+          {/* Vérifie si nous avons des segments à afficher */}
+          {verse.segments && verse.segments.length > 0 ? (
+            <Box sx={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 2,
+              justifyContent: 'center'
+            }}>
+              {verse.segments.map((segment, index) => {
+                console.log(`Segment ${index}:`, segment);
+                return (
+                  <Box
+                    key={index}
+                    sx={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      width: { xs: '45%', sm: '30%', md: '22%', lg: '18%' },
+                      mb: 2,
+                      p: 1,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 1,
+                      bgcolor: theme === 'dark' ? 'rgba(66, 66, 66, 0.6)' : 'rgba(250, 250, 250, 0.8)',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+                      '&:hover': {
+                        boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+                        bgcolor: theme === 'dark' ? 'rgba(80, 80, 80, 0.7)' : 'rgba(255, 255, 255, 0.9)',
+                      }
+                    }}
+                  >
+                    {/* Conteneur pour le mot arabe avec icône de recherche en haut à droite */}
+                    <Box sx={{ 
+                      position: 'relative',
+                      width: '100%',
+                      mb: 0.5,
+                      pt: 1.5 // Ajouter de l'espace en haut pour l'icône
+                    }}>
+                      {/* Icône de recherche en haut à droite */}
+                      <Tooltip title="Rechercher des mots similaires">
+                        <IconButton 
+                          size="small" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            searchSimilarWords(segment.ar);
+                          }}
+                          sx={{ 
+                            position: 'absolute',
+                            top: -8,
+                            right: -8,
+                            opacity: 0.7,
+                            backgroundColor: theme === 'dark' ? 'rgba(30, 30, 30, 0.4)' : 'rgba(240, 240, 240, 0.7)',
+                            padding: '2px',
+                            minWidth: '20px',
+                            height: '20px',
+                            width: '20px',
+                            '&:hover': {
+                              opacity: 1,
+                              backgroundColor: theme === 'dark' ? 'rgba(50, 50, 50, 0.8)' : 'rgba(230, 230, 230, 1)'
+                            }
+                          }}
+                        >
+                          <SearchIcon sx={{ fontSize: '14px' }} />
+                        </IconButton>
+                      </Tooltip>
+                      {/* Mot arabe */}
+                      <Typography align="center" sx={{ 
+                        fontFamily: '"Noto Naskh Arabic", sans-serif', 
+                        fontSize: '1.3rem',
+                        fontWeight: 500,
+                        color: theme === 'dark' ? 'primary.light' : 'primary.main',
+                      }}>
+                        {highlightSearchTerm(segment.ar || '?', searchTerm)}
+                      </Typography>
+                    </Box>
+                    
+                    {/* Traduction sous le mot arabe */}
+                    <Typography variant="body2" align="center" sx={{ 
+                      fontWeight: 500,
+                      color: theme === 'dark' ? 'info.light' : 'info.dark',
+                      mb: 1,
+                      borderBottom: '1px dashed',
+                      borderColor: 'divider',
+                      pb: 0.5
+                    }}>
+                      {segment.en || 'Traduction non disponible'}
+                    </Typography>
+                    
+                    {/* Translittération en dernier */}
+                    <Typography variant="caption" align="center" sx={{ 
+                      fontStyle: 'italic',
+                      color: theme === 'dark' ? 'grey.400' : 'text.secondary'
+                    }}>
+                      {highlightTransliteration(segment.tl || 'Translitération non disponible', searchTerm, verse.segments)}
+                    </Typography>
+                  </Box>
+                );
+              })}
+            </Box>
+
+        {/* Détails des mots si l'option est activée pour ce verset */}
+        {showDetails && verse.segments && (
+          <Box sx={{ mt: 2 }}>
+            <Divider sx={{ mb: 2 }} />
+            <Typography variant="subtitle2" gutterBottom>
+              Analyse mot par mot:
+            </Typography>
+            {/* Vérifie si nous avons des segments à afficher */}
+            {verse.segments && verse.segments.length > 0 ? (
+              <Box sx={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 2,
+                justifyContent: 'center'
+              }}>
+                {verse.segments.map((segment, index) => (
+                  <Box
+                    key={index}
+                    sx={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      width: { xs: '45%', sm: '30%', md: '22%', lg: '18%' },
+                      mb: 2,
+                      p: 1,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 1,
+                      bgcolor: theme === 'dark' ? 'rgba(66, 66, 66, 0.6)' : 'rgba(250, 250, 250, 0.8)',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+                      '&:hover': {
+                        boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+                        bgcolor: theme === 'dark' ? 'rgba(80, 80, 80, 0.7)' : 'rgba(255, 255, 255, 0.9)',
+                      }
+                    }}
+                  >
+                    {/* Conteneur pour le mot arabe avec icône de recherche en haut à droite */}
+                    <Box sx={{ 
+                      position: 'relative',
+                      width: '100%',
+                      mb: 0.5,
+                      pt: 1.5 // Ajouter de l'espace en haut pour l'icône
+                    }}>
+                      {/* Icône de recherche en haut à droite */}
+                      <Tooltip title="Rechercher des mots similaires">
+                        <IconButton 
+                          size="small" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            searchSimilarWords(segment.ar);
+                          }}
+                          sx={{ 
+                            position: 'absolute',
+                            top: -8,
+                            right: -8,
+                            opacity: 0.7,
+                            backgroundColor: theme === 'dark' ? 'rgba(30, 30, 30, 0.4)' : 'rgba(240, 240, 240, 0.7)',
+                            padding: '2px',
+                            minWidth: '20px',
+                            height: '20px',
+                            width: '20px',
+                            '&:hover': {
+                              opacity: 1,
+                              backgroundColor: theme === 'dark' ? 'rgba(50, 50, 50, 0.8)' : 'rgba(230, 230, 230, 1)'
+                            }
+                          }}
+                        >
+                          <SearchIcon sx={{ fontSize: '14px' }} />
+                        </IconButton>
+                      </Tooltip>
+                      
+                      {/* Mot arabe */}
+                      <Typography align="center" sx={{ 
+                        fontFamily: '"Noto Naskh Arabic", sans-serif', 
+                        fontSize: '1.3rem',
+                        fontWeight: 500,
+                        color: theme === 'dark' ? 'primary.light' : 'primary.main',
+                      }}>
+                        {highlightSearchTerm(segment.ar || '?', searchTerm)}
+                      </Typography>
+                    </Box>
+                    
+                    {/* Traduction sous le mot arabe (utilise 'en' car c'est ce qui existe dans le schéma) */}
+                    <Typography variant="body2" align="center" sx={{ 
+                      fontWeight: 500,
+                      color: theme === 'dark' ? 'info.light' : 'info.dark',
+                      mb: 1,
+                      borderBottom: '1px dashed',
+                      borderColor: 'divider',
+                      pb: 0.5
+                    }}>
+                      {segment.en || 'Traduction non disponible'}
+                    </Typography>
+                    
+                    {/* Translittération en dernier (utilise 'tl' car c'est ce qui existe dans le schéma) */}
+                    <Typography variant="caption" align="center" sx={{ 
+                      fontStyle: 'italic',
+                      color: theme === 'dark' ? 'grey.400' : 'text.secondary'
+                    }}>
+                      {highlightTransliteration(segment.tl || 'Translitération non disponible', searchTerm, verse.segments)}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            ) : (
+              <Typography color="text.secondary" align="center">
+                Aucune donnée mot à mot disponible pour ce verset
+              </Typography>
+            )}
+          </Box>
+        )}
+
+        {/* Bouton pour voir en contexte (principalement pour la page des favoris) */}
+        {showContextButton && (
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={viewInContext}
+            >
+              Voir en contexte
+            </Button>
+          </Box>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+export default VerseCard;
